@@ -1,0 +1,312 @@
+---
+title: "International Trade Data Wrangling & Visualization"
+author: "PSN Prasanna Kumar Yepuri"
+date: "2022-10-19"
+output: html_document
+---
+
+## **Data Source:**
+
+<http://data.un.org/_Docs/SYB/CSV/SYB64_123_202110_Total%20Imports%20Exports%20and%20Balance%20of%20Trade.csv> <http://data.un.org/_Docs/SYB/CSV/SYB64_330_202110_Major%20Trading%20Partners.csv>
+
+## **Data Set:**
+
+Using two related data sets on International Trade from United Nations data repository.
+
+**1.** Value of Exports, Imports and Balance of Trade of each country in the World.
+
+**2.** Top 3 major trading partners for each country and their percentage value of total trade.
+
+## **Objective:**
+
+To process and prepare the two data sets for analysis, join them together as a single data source and gain important insights on the performance of Major World Economies.
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+## **Code**
+
+### **Reset-Data**
+
+```{r}
+rm(list = ls())
+```
+
+### **Libraries**
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(ggthemes)
+library(RColorBrewer)
+library(kableExtra)
+```
+
+### **Importing Data**
+
+### **Data-1:** Total Imports, Exports & Trade Balance
+
+```{r}
+trade_data <- read.csv("Internation Trade Balance.csv", 
+                       header=TRUE,skip=1)
+kbl(trade_data[1:10,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+
+```
+
+Re-arranging the columns and column names
+
+```{r}
+colnames(trade_data)[c(1,2,4)] <- c("Region_Code", "Country", "Trade")
+col_order1 <- c("Region_Code", "Country", "Year", "Trade", "Value")
+
+trade_data <- trade_data[, col_order1]
+kbl(trade_data[1:20,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+**Un-Tidy Explanation:** Variables USD Values of Imports, Exports and Balance of Trade are under a same column "Trade" for rows Region_Code, Country and Year. We have to Wider the table in order to access USD Values of Imports, Exports and Balance of Trade for each country separately. Then only the table will comply with Tidy Data Principles.
+
+### **Data-2:** Major Trading Partners
+
+```{r}
+trade_partners <- read.csv("International Trade Partners.csv",
+                           header = TRUE, skip = 1)
+kbl(trade_partners[1:10,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+Re-arranging the columns and column names
+
+```{r}
+colnames(trade_partners)[c(1,2,4,5,6,7)] <- c("Region_Code", "Country", "Partners_Type", 
+                                              "Partners_Name", "footnote", "Value_in_%")
+col_order2 <- c("Region_Code", "Country", "Year", "Partners_Type", "Partners_Name", "Value_in_%")
+
+trade_partners <- trade_partners[, col_order2]
+kbl(trade_partners[1:20,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+**Un-Tidy Explanation:** Variables Major Trading Partners 1, 2 & 3 are under a same column "Series" and their respective trade value share are under same column "Value" for rows Region_Code, Country and Year. We have to Wider the table so that we can get each variable in their own column and comply with Tidy Data Principles.
+
+### **Processing Data - 1:**
+
+Separating Countries and Geographical Regions. Selecting 3 recent years data.
+
+```{r}
+trade_data_country <- trade_data[-c(1:630),]
+trade_data_country <- subset(trade_data_country, (Year %in% c(2010,2015,2020)))
+
+trade_data_regions <- trade_data[c(1:630),]
+
+kbl(trade_data_country[1:20,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+**pivot_wider** to clearing view each country's Imports, Export & Trade Balance
+
+```{r}
+trade_data_country <- trade_data_country %>%
+  pivot_wider(names_from = Trade, values_from = Value)
+
+colnames(trade_data_country)[c(2,4,5,6)] <- c("Country", "Imports_in_M_USD", "Exports_in_M_USD", "Imp_Exp_Balance_in_M_USD")
+
+kbl(trade_data_country[1:20,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+**Tidy Explanation:** Previously Variables Values of Imports, Exports and Balance of Trade are under a same column Trade for rows Region_Code, Country and Year.
+
+In new data table each variable "System of Trade" has its own column and whole table complies with Tidy Data Principles
+
+Understanding the data types of columns
+
+```{r}
+str(trade_data_country)
+
+```
+
+Converting the Data type of Trade Values into numeric form.
+
+```{r}
+trade_data_country$Imports_in_M_USD <- as.numeric(gsub(",", "", trade_data_country$Imports_in_M_USD))
+
+trade_data_country$Exports_in_M_USD <- as.numeric(gsub(",", "", trade_data_country$Exports_in_M_USD))
+
+trade_data_country$Imp_Exp_Balance_in_M_USD <- as.numeric(gsub(",", "", trade_data_country$Imp_Exp_Balance_in_M_USD))
+```
+
+### **Analysis Data 1:** Designating Countries as Trade Surplus or Trade Deficit countries based on Balance of Trade.
+
+```{r}
+trade_data_country <- transform(trade_data_country, 
+                                Trade_Balance = ifelse(trade_data_country$Imp_Exp_Balance_in_M_USD > 0, "Surplus", "Deficit"))
+
+kbl(trade_data_country[1:20,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+
+```
+
+Determining Percentage of Trade Balance (Surplus / Deficit) w.r.t Exports of the country
+
+```{r}
+trade_data_country <- transform(trade_data_country, Balance_Perc = round((trade_data_country$Imp_Exp_Balance_in_M_USD/trade_data_country$Exports_in_M_USD*100),digits=2))
+
+kbl(trade_data_country[1:20,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+### **Processing Data - 2:**
+
+**pivot_wider** to clearly view and process partner's ranking and their trade value in percentage of exports and imports.
+
+```{r}
+colnames(trade_partners)[c(2, 6)] <- c("Country", "Value_in_Perc")
+
+trade_partners <- trade_partners %>%
+  pivot_wider(names_from = Partners_Type, values_from = c(Partners_Name, Value_in_Perc))
+```
+
+Rearranging column and their names.
+
+```{r}
+colnames(trade_partners)[c(4,5,6,7,8,9,10,11,12,
+                           13,14,15)] <- c("Exports_Partner_1", "Imports_Partner_1", 
+                                           "Exports_Partner_2", "Imports_Partner_2",
+                                           "Exports_Partner_3", "Imports_Partner_3",
+                                           "PerVal_of_Exports_1", "PerVal_of_Imports_1",
+                                           "PerVal_of_Exports_2", "PerVal_of_Imports_2",
+                                           "PerVal_of_Exports_3", "PerVal_of_Imports_3")
+                                                                     
+col_order3 <- c("Region_Code", "Country", "Year", 
+                            "Exports_Partner_1", "PerVal_of_Exports_1", 
+                            "Imports_Partner_1", "PerVal_of_Imports_1",
+                            "Exports_Partner_2", "PerVal_of_Exports_2", 
+                            "Imports_Partner_2", "PerVal_of_Imports_2",
+                            "Exports_Partner_3", "PerVal_of_Exports_3", 
+                            "Imports_Partner_3", "PerVal_of_Imports_3")
+                 
+
+trade_partners <- trade_partners[, col_order3]
+
+kbl(trade_partners[1:20,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+
+```
+
+**Tidy Explanation:** Previously Variables Major Trading Partners 1, 2 & 3 are under a same column "Series" and their respective trade value share are under same column "Value" for rows Region_Code, Country and Year.
+
+In new data table each variable "Series" has its own column i.e., into 12 new columns and whole table complies with Tidy Data Principles
+
+## **Final Data Table**
+
+Joining of Tables based on Region_Code, Country and Year to consolidate International Trade Data of each Country for the years 2010, 2015 & 2020
+
+```{r}
+International_Trade <- trade_data_country %>% inner_join(trade_partners)
+```
+
+```{r}
+kbl(International_Trade[1:20,]) %>% kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+## **Data Analysis and Visualization**
+
+Sub-setting Major World Economies data from All Countries data.
+
+```{r}
+major_economies <- filter(International_Trade, Country %in% c("United States of America", "China", "United Kingdom", "Japan", "Germany", "France"))
+
+major_economies$Year <- as.character.Date(major_economies$Year, format="%Y")
+
+
+kbl(major_economies[1:18,]) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+
+### **Plot 1** 
+
+**Values of Imports and Exports of Major Economies of the World over the years 2010, 2015, 2020**
+
+```{r}
+ggplot(major_economies, aes(x = Year))+
+  geom_point(aes(y = Exports_in_M_USD, col = "Exports"), size = 5, shape = 10)+
+  geom_point(aes(y = Imports_in_M_USD, col = "Imports"), size = 5)+
+  labs( x="Year", y="Million USD")+
+  facet_wrap(~ Country, nrow = 2)+
+  scale_color_manual(name="", 
+                     values = c("Exports"="darkgreen", "Imports"="orange"))+
+  ggtitle("Trade Values of Major Economies")
+```
+
+**Insights:** 
+We can see stagnation of growth in Trade Value of "Japan", "United Kingdom" and "France" over the 10 year period.
+
+China and United States of America are the only Major countries whose Trade Value increased significantly, whereas Germany's Trade Value seen a moderate growth over the same period.
+
+USA's Exports kept growing in line with Imports till 2015 but from then the Exports fell significantly whereas Imports kept raising.
+
+China has High-Trade Surplus whereas United States has High-Trade Deficit. Japan has right balance between Exports and Imports.
+
+### **Plot 2** 
+
+**Trade Balance of Major Economies over the years 2010, 2015 and 2020**
+
+```{r}
+options(scipen = 999)
+ggplot(major_economies, aes(x = Country, y = Imp_Exp_Balance_in_M_USD, fill = Year)) +
+  geom_bar(position = "dodge", stat = 'identity')+
+  scale_fill_brewer(palette = "Paired")+
+  labs(y = "Trade Balance (Deficit/Surplus)", subtitle = "+ve means Surplus \n -ve means Deficit")+
+  ggtitle("Trade Balance of Major Economies")+
+  theme(axis.text.x = element_text(angle=25, vjust=0.6))
+```
+
+**Insights:** 
+United States Trade Deficit kept on increasing from 2010 - 2020. 
+
+Japan's Trade Balance settled out over the years. 
+
+China's Trade Balance saw a significant boom from 2010 - 2015.
+
+### **Plot 3**
+
+**Looking at the number of Countries with Major Economies as their Major Trading Partners**
+Creating a new data frame with counts of Major Trading Partners for Major Economies for year 2020.
+```{r}
+major_partners <- International_Trade %>% count(Imports_Partner_1, Year)
+major_economies_partners <- filter(major_partners,  Imports_Partner_1 %in% c("United States", "China", "United Kingdom", "Japan", "Germany", "France") & Year == "2020")
+
+major_economies_partners <- major_economies_partners[,c(-2)]
+
+colnames(major_economies_partners) <- c("Country", "Primary_Trading_Countries")
+
+kbl(major_economies_partners) %>%
+  kable_paper(bootstrap_options = "striped", full_width = F)
+```
+Plotting
+```{r}
+ggplot(major_economies_partners, aes(x= Country, y = Primary_Trading_Countries))+
+  geom_bar(stat="identity", width = 0.5, fill="tomato2") + 
+  labs(title="Count of Primary Trade Partners for Major Economies", 
+       y = "No. of Countries") +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+**Insights:**
+China is a Major Trading partner for 72 countries around the World, which is the highest for any Major Economy. This explains China significant share in International Trade.
+
+Second significant Trading partner for the World is the United States of America with 32 countries.
+
+## **Foot Notes**
+Trade Values are in Millions USD. 
+
+Removed some years from Trade Data as those years data is not present in Trade Partners data
+
+Original Trade_data has region based Statistics but we are ignoring those columns and focusing only on Countries for the years 2010, 2015 and 2020. Created "trade_data_country" data frame which only contains country data.
+
+I gave a classification of Trade Surplus or Trade Deficit for all the countries in a new column.
+
+There are so many more insights that can be generated from the data. 
